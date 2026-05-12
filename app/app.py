@@ -188,37 +188,27 @@ with gr.Blocks(title="Study Buddy", theme=gr.themes.Default()) as demo:
         # ── Tab 1: Ask a question ──────────────────────────────────────────────
         with gr.Tab("Ask a Question"):
             gr.Markdown("Ask any study question — concepts, explanations, definitions.")
+            gr.Markdown(
+                "**Example questions:** What is a p-value? · Explain recursion · "
+                "What is natural selection? · How does gradient descent work?"
+            )
             q_input  = gr.Textbox(label="Your question", placeholder="e.g. Explain what a p-value is", lines=2)
             q_button = gr.Button("Ask", variant="primary")
             q_output = gr.Markdown(label="Answer")
             q_button.click(fn=ask_question, inputs=q_input, outputs=q_output)
-            gr.Examples(
-                examples=[
-                    ["What is the difference between mean, median, and mode?"],
-                    ["Explain recursion in programming with an example."],
-                    ["What is natural selection?"],
-                    ["How does gradient descent work?"],
-                ],
-                inputs=q_input,
-            )
 
         # ── Tab 2: Flashcard generator ─────────────────────────────────────────
         with gr.Tab("Flashcard Generator"):
             gr.Markdown("Enter a topic and get instant revision flashcards.")
+            gr.Markdown(
+                "**Example topics:** sorting algorithms · SQL joins · "
+                "Newton's laws · Git commands · supply and demand"
+            )
             f_topic  = gr.Textbox(label="Topic", placeholder="e.g. SQL joins, Newton's laws, photosynthesis")
             f_n      = gr.Slider(minimum=3, maximum=10, value=5, step=1, label="Number of flashcards")
             f_button = gr.Button("Generate Flashcards", variant="primary")
             f_output = gr.Markdown(label="Flashcards")
             f_button.click(fn=make_flashcards, inputs=[f_topic, f_n], outputs=f_output)
-            gr.Examples(
-                examples=[
-                    ["sorting algorithms"],
-                    ["the human digestive system"],
-                    ["Git commands"],
-                    ["supply and demand"],
-                ],
-                inputs=f_topic,
-            )
 
         # ── Tab 3: Risk dashboard ──────────────────────────────────────────────
         with gr.Tab("Dropout Risk Assessment"):
