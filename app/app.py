@@ -27,6 +27,7 @@ ROOT        = Path(__file__).resolve().parent.parent
 ADAPTER_DIR = ROOT / "models" / "gemma-study-buddy"
 LR_MODEL    = ROOT / "models" / "logistic_regression.pkl"
 DT_MODEL    = ROOT / "models" / "decision_tree.pkl"
+SCALER_PATH = ROOT / "models" / "scaler.pkl"
 
 # ── device detection ───────────────────────────────────────────────────────────
 if torch.cuda.is_available():
@@ -109,8 +110,9 @@ def generate(instruction: str, max_new_tokens: int = 400) -> str:
 
 
 # ── load sklearn risk models ───────────────────────────────────────────────────
-lr_model = joblib.load(LR_MODEL) if LR_MODEL.exists() else None
-dt_model = joblib.load(DT_MODEL) if DT_MODEL.exists() else None
+lr_model = joblib.load(LR_MODEL)    if LR_MODEL.exists()    else None
+dt_model = joblib.load(DT_MODEL)    if DT_MODEL.exists()    else None
+scaler   = joblib.load(SCALER_PATH) if SCALER_PATH.exists() else None
 
 
 CATEGORICAL_MAPS = {
@@ -134,6 +136,17 @@ CATEGORICAL_MAPS = {
     ],
 }
 
+# Exact column order the sklearn models were trained on
+FEATURE_COLS = [
+    "gender", "region", "highest_education", "imd_band", "age_band",
+    "num_of_prev_attempts", "studied_credits", "disability", "date_registration",
+    "avg_score", "max_score", "std_score", "num_submissions", "avg_days_early",
+    "weighted_avg_score", "avg_tma_score", "avg_cma_score", "avg_exam_score",
+    "total_clicks", "active_days",
+    "clicks_forumng", "clicks_oucontent", "clicks_subpage", "clicks_homepage",
+    "clicks_quiz", "clicks_resource", "clicks_url", "clicks_ouwiki",
+]
+
 def encode_features(
     gender, region, highest_education, imd_band, age_band, disability,
     num_prev_attempts, studied_credits, date_registration,
@@ -141,6 +154,8 @@ def encode_features(
     avg_days_early, weighted_avg_score,
     avg_tma_score, avg_cma_score, avg_exam_score,
     total_clicks, active_days,
+    clicks_forumng, clicks_oucontent, clicks_subpage, clicks_homepage,
+    clicks_quiz, clicks_resource, clicks_url, clicks_ouwiki,
 ):
     row = {
         "gender":            gender,
@@ -148,9 +163,9 @@ def encode_features(
         "highest_education": highest_education,
         "imd_band":          imd_band,
         "age_band":          age_band,
-        "disability":        disability,
         "num_of_prev_attempts": num_prev_attempts,
         "studied_credits":   studied_credits,
+        "disability":        disability,
         "date_registration": date_registration,
         "avg_score":         avg_score,
         "max_score":         max_score,
@@ -163,9 +178,17 @@ def encode_features(
         "avg_exam_score":    avg_exam_score,
         "total_clicks":      total_clicks,
         "active_days":       active_days,
+        "clicks_forumng":    clicks_forumng,
+        "clicks_oucontent":  clicks_oucontent,
+        "clicks_subpage":    clicks_subpage,
+        "clicks_homepage":   clicks_homepage,
+        "clicks_quiz":       clicks_quiz,
+        "clicks_resource":   clicks_resource,
+        "clicks_url":        clicks_url,
+        "clicks_ouwiki":     clicks_ouwiki,
     }
-    df = pd.DataFrame([row])
-    for col, _ in CATEGORICAL_MAPS.items():
+    df = pd.DataFrame([row])[FEATURE_COLS]   # enforce training column order
+    for col in CATEGORICAL_MAPS:
         le = LabelEncoder()
         le.fit(CATEGORICAL_MAPS[col])
         df[col] = le.transform(df[col].astype(str))
@@ -179,28 +202,32 @@ def predict_risk(
     avg_days_early, weighted_avg_score,
     avg_tma_score, avg_cma_score, avg_exam_score,
     total_clicks, active_days,
+    clicks_forumng, clicks_oucontent, clicks_subpage, clicks_homepage,
+    clicks_quiz, clicks_resource, clicks_url, clicks_ouwiki,
 ):
-    if lr_model is None or dt_model is None:
+    if lr_model is None or dt_model is None or scaler is None:
         return "Models not found. Run src/train_models.py first."
 
-    X = encode_features(
+    X = scaler.transform(encode_features(
         gender, region, highest_education, imd_band, age_band, disability,
         num_prev_attempts, studied_credits, date_registration,
         avg_score, max_score, std_score, num_submissions,
         avg_days_early, weighted_avg_score,
         avg_tma_score, avg_cma_score, avg_exam_score,
         total_clicks, active_days,
-    )
+        clicks_forumng, clicks_oucontent, clicks_subpage, clicks_homepage,
+        clicks_quiz, clicks_resource, clicks_url, clicks_ouwiki,
+    ))
     lr_prob = lr_model.predict_proba(X)[0][1]
     dt_prob = dt_model.predict_proba(X)[0][1]
     avg_prob = (lr_prob + dt_prob) / 2
 
     if avg_prob >= 0.7:
-        level, colour = "🔴 HIGH RISK", "red"
+        level = "🔴 HIGH RISK"
     elif avg_prob >= 0.4:
-        level, colour = "🟡 MODERATE RISK", "orange"
+        level = "🟡 MODERATE RISK"
     else:
-        level, colour = "🟢 LOW RISK", "green"
+        level = "🟢 LOW RISK"
 
     return (
         f"## {level}\n\n"
@@ -301,6 +328,15 @@ with gr.Blocks(title="Study Buddy", theme=gr.themes.Soft()) as demo:
                     gr.Markdown("**VLE engagement**")
                     tot_clicks  = gr.Slider(0, 50000, value=3000, step=100, label="Total VLE clicks")
                     active_days = gr.Slider(0, 300,   value=60,   step=1,   label="Active study days")
+                    gr.Markdown("**Clicks by activity type**")
+                    c_forumng   = gr.Slider(0, 10000, value=500,  step=50,  label="Forum clicks")
+                    c_oucontent = gr.Slider(0, 10000, value=800,  step=50,  label="OUContent clicks")
+                    c_subpage   = gr.Slider(0, 5000,  value=200,  step=50,  label="Subpage clicks")
+                    c_homepage  = gr.Slider(0, 5000,  value=300,  step=50,  label="Homepage clicks")
+                    c_quiz      = gr.Slider(0, 5000,  value=200,  step=50,  label="Quiz clicks")
+                    c_resource  = gr.Slider(0, 5000,  value=400,  step=50,  label="Resource clicks")
+                    c_url       = gr.Slider(0, 5000,  value=300,  step=50,  label="URL clicks")
+                    c_ouwiki    = gr.Slider(0, 5000,  value=100,  step=50,  label="OUWiki clicks")
 
                     gr.Markdown("**Result**")
                     risk_output = gr.Markdown()
@@ -314,6 +350,8 @@ with gr.Blocks(title="Study Buddy", theme=gr.themes.Soft()) as demo:
                     avg_score, max_score, std_score, n_subs,
                     avg_early, w_avg, tma_score, cma_score, exam_score,
                     tot_clicks, active_days,
+                    c_forumng, c_oucontent, c_subpage, c_homepage,
+                    c_quiz, c_resource, c_url, c_ouwiki,
                 ],
                 outputs=risk_output,
             )

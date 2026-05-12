@@ -225,6 +225,8 @@ def main():
         ("Decision Tree",       dt_y_test, dt_y_prob),
     ])
 
+    joblib.dump(scaler, MODELS / "scaler.pkl")
+    print(f"Scaler saved → {MODELS}/scaler.pkl")
     print("\nAll done. Artifacts in reports/ and models/")
 
 
