@@ -67,6 +67,8 @@ def load_and_prepare():
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
+    joblib.dump(scaler, MODELS / "scaler.pkl")
+
     feature_names = df.drop(columns=DROP_COLS).columns.tolist()
     return X_scaled, X, y, feature_names, scaler
 

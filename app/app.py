@@ -99,47 +99,28 @@ FEATURE_COLS = [
     "clicks_quiz", "clicks_resource", "clicks_url", "clicks_ouwiki",
 ]
 
-def encode_features(
-    gender, region, highest_education, imd_band, age_band, disability,
-    num_prev_attempts, studied_credits, date_registration,
-    avg_score, max_score, std_score, num_submissions,
-    avg_days_early, weighted_avg_score,
-    avg_tma_score, avg_cma_score, avg_exam_score,
-    total_clicks, active_days,
-    clicks_forumng, clicks_oucontent, clicks_subpage, clicks_homepage,
-    clicks_quiz, clicks_resource, clicks_url, clicks_ouwiki,
-):
+def encode_features(gender, region, highest_education, imd_band, age_band,
+                    disability, num_prev_attempts, studied_credits, date_registration,
+                    avg_score, max_score, std_score, num_submissions, avg_days_early,
+                    weighted_avg_score, avg_tma_score, avg_cma_score, avg_exam_score,
+                    total_clicks, active_days):
     row = {
-        "gender":            gender,
-        "region":            region,
-        "highest_education": highest_education,
-        "imd_band":          imd_band,
-        "age_band":          age_band,
-        "num_of_prev_attempts": num_prev_attempts,
-        "studied_credits":   studied_credits,
-        "disability":        disability,
-        "date_registration": date_registration,
-        "avg_score":         avg_score,
-        "max_score":         max_score,
-        "std_score":         std_score,
-        "num_submissions":   num_submissions,
-        "avg_days_early":    avg_days_early,
-        "weighted_avg_score": weighted_avg_score,
-        "avg_tma_score":     avg_tma_score,
-        "avg_cma_score":     avg_cma_score,
-        "avg_exam_score":    avg_exam_score,
-        "total_clicks":      total_clicks,
-        "active_days":       active_days,
-        "clicks_forumng":    clicks_forumng,
-        "clicks_oucontent":  clicks_oucontent,
-        "clicks_subpage":    clicks_subpage,
-        "clicks_homepage":   clicks_homepage,
-        "clicks_quiz":       clicks_quiz,
-        "clicks_resource":   clicks_resource,
-        "clicks_url":        clicks_url,
-        "clicks_ouwiki":     clicks_ouwiki,
+        "gender": gender, "region": region,
+        "highest_education": highest_education, "imd_band": imd_band,
+        "age_band": age_band, "num_of_prev_attempts": num_prev_attempts,
+        "studied_credits": studied_credits, "disability": disability,
+        "date_registration": date_registration, "avg_score": avg_score,
+        "max_score": max_score, "std_score": std_score,
+        "num_submissions": num_submissions, "avg_days_early": avg_days_early,
+        "weighted_avg_score": weighted_avg_score, "avg_tma_score": avg_tma_score,
+        "avg_cma_score": avg_cma_score, "avg_exam_score": avg_exam_score,
+        "total_clicks": total_clicks, "active_days": active_days,
+        # default activity-type clicks to 0 — not exposed in UI
+        "clicks_forumng": 0, "clicks_oucontent": 0, "clicks_subpage": 0,
+        "clicks_homepage": 0, "clicks_quiz": 0, "clicks_resource": 0,
+        "clicks_url": 0, "clicks_ouwiki": 0,
     }
-    df = pd.DataFrame([row])[FEATURE_COLS]   # enforce training column order
+    df = pd.DataFrame([row])[FEATURE_COLS]
     for col in CATEGORICAL_MAPS:
         le = LabelEncoder()
         le.fit(CATEGORICAL_MAPS[col])
@@ -147,31 +128,23 @@ def encode_features(
     return df.values
 
 
-def predict_risk(
-    gender, region, highest_education, imd_band, age_band, disability,
-    num_prev_attempts, studied_credits, date_registration,
-    avg_score, max_score, std_score, num_submissions,
-    avg_days_early, weighted_avg_score,
-    avg_tma_score, avg_cma_score, avg_exam_score,
-    total_clicks, active_days,
-    clicks_forumng, clicks_oucontent, clicks_subpage, clicks_homepage,
-    clicks_quiz, clicks_resource, clicks_url, clicks_ouwiki,
-):
+def predict_risk(gender, region, highest_education, imd_band, age_band,
+                 disability, num_prev_attempts, studied_credits, date_registration,
+                 avg_score, max_score, std_score, num_submissions, avg_days_early,
+                 weighted_avg_score, avg_tma_score, avg_cma_score, avg_exam_score,
+                 total_clicks, active_days):
     if lr_model is None or dt_model is None or scaler is None:
-        return "Models not found. Run src/train_models.py first."
+        return "⚠️ Models not found. Run `python src/train_models.py` first."
 
     X = scaler.transform(encode_features(
-        gender, region, highest_education, imd_band, age_band, disability,
-        num_prev_attempts, studied_credits, date_registration,
-        avg_score, max_score, std_score, num_submissions,
-        avg_days_early, weighted_avg_score,
-        avg_tma_score, avg_cma_score, avg_exam_score,
+        gender, region, highest_education, imd_band, age_band,
+        disability, num_prev_attempts, studied_credits, date_registration,
+        avg_score, max_score, std_score, num_submissions, avg_days_early,
+        weighted_avg_score, avg_tma_score, avg_cma_score, avg_exam_score,
         total_clicks, active_days,
-        clicks_forumng, clicks_oucontent, clicks_subpage, clicks_homepage,
-        clicks_quiz, clicks_resource, clicks_url, clicks_ouwiki,
     ))
-    lr_prob = lr_model.predict_proba(X)[0][1]
-    dt_prob = dt_model.predict_proba(X)[0][1]
+    lr_prob  = lr_model.predict_proba(X)[0][1]
+    dt_prob  = dt_model.predict_proba(X)[0][1]
     avg_prob = (lr_prob + dt_prob) / 2
 
     if avg_prob >= 0.7:
@@ -183,10 +156,9 @@ def predict_risk(
 
     return (
         f"## {level}\n\n"
-        f"| Model | Dropout Probability |\n"
-        f"|---|---|\n"
+        f"| Model | Dropout Probability |\n|---|---|\n"
         f"| Logistic Regression | {lr_prob:.1%} |\n"
-        f"| Decision Tree       | {dt_prob:.1%} |\n"
+        f"| Decision Tree | {dt_prob:.1%} |\n"
         f"| **Ensemble average** | **{avg_prob:.1%}** |\n\n"
         f"*Higher probability = higher risk of withdrawal.*"
     )
@@ -207,14 +179,14 @@ def make_flashcards(topic, n_cards):
     return generate(instruction, max_new_tokens=600)
 
 
-with gr.Blocks(title="Study Buddy", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="Study Buddy", theme=gr.themes.Default()) as demo:
 
-    gr.Markdown("# 📚 Study Buddy\nAI-powered study assistant backed by Gemma 2B + OULAD risk models.")
+    gr.Markdown("# Study Buddy\nAI-powered study assistant backed by Gemma 2B + OULAD risk models.")
 
     with gr.Tabs():
 
         # ── Tab 1: Ask a question ──────────────────────────────────────────────
-        with gr.Tab("💬 Ask a Question"):
+        with gr.Tab("Ask a Question"):
             gr.Markdown("Ask any study question — concepts, explanations, definitions.")
             q_input  = gr.Textbox(label="Your question", placeholder="e.g. Explain what a p-value is", lines=2)
             q_button = gr.Button("Ask", variant="primary")
@@ -231,7 +203,7 @@ with gr.Blocks(title="Study Buddy", theme=gr.themes.Soft()) as demo:
             )
 
         # ── Tab 2: Flashcard generator ─────────────────────────────────────────
-        with gr.Tab("🃏 Flashcard Generator"):
+        with gr.Tab("Flashcard Generator"):
             gr.Markdown("Enter a topic and get instant revision flashcards.")
             f_topic  = gr.Textbox(label="Topic", placeholder="e.g. SQL joins, Newton's laws, photosynthesis")
             f_n      = gr.Slider(minimum=3, maximum=10, value=5, step=1, label="Number of flashcards")
@@ -239,16 +211,18 @@ with gr.Blocks(title="Study Buddy", theme=gr.themes.Soft()) as demo:
             f_output = gr.Markdown(label="Flashcards")
             f_button.click(fn=make_flashcards, inputs=[f_topic, f_n], outputs=f_output)
             gr.Examples(
-                examples=["sorting algorithms", "the human digestive system", "Git commands", "supply and demand"],
+                examples=[
+                    ["sorting algorithms"],
+                    ["the human digestive system"],
+                    ["Git commands"],
+                    ["supply and demand"],
+                ],
                 inputs=f_topic,
             )
 
         # ── Tab 3: Risk dashboard ──────────────────────────────────────────────
-        with gr.Tab("📊 Dropout Risk Assessment"):
-            gr.Markdown(
-                "Enter a student's profile to predict their dropout risk "
-                "using models trained on the OULAD dataset."
-            )
+        with gr.Tab("Dropout Risk Assessment"):
+            gr.Markdown("Enter a student profile to predict dropout risk using OULAD-trained models.")
             with gr.Row():
                 with gr.Column():
                     gr.Markdown("**Demographics**")
@@ -258,14 +232,12 @@ with gr.Blocks(title="Study Buddy", theme=gr.themes.Soft()) as demo:
                     disability  = gr.Dropdown(["N", "Y"], value="N", label="Disability")
                     imd_band    = gr.Dropdown(CATEGORICAL_MAPS["imd_band"], value="50-60%", label="IMD deprivation band")
                     highest_edu = gr.Dropdown(CATEGORICAL_MAPS["highest_education"], value="A Level or Equivalent", label="Highest education")
-
-                with gr.Column():
-                    gr.Markdown("**Enrolment**")
                     num_prev    = gr.Slider(0, 6, value=0, step=1, label="Previous attempts")
                     credits     = gr.Slider(30, 600, value=60, step=30, label="Studied credits")
-                    date_reg    = gr.Slider(-200, 0, value=-30, step=1, label="Days registered before course start")
 
+                with gr.Column():
                     gr.Markdown("**Assessment performance**")
+                    date_reg    = gr.Slider(-200, 0, value=-30, step=1, label="Days registered before course start")
                     avg_score   = gr.Slider(0, 100, value=65, label="Average score")
                     max_score   = gr.Slider(0, 100, value=80, label="Max score")
                     std_score   = gr.Slider(0, 50,  value=10, label="Score std dev")
@@ -279,19 +251,9 @@ with gr.Blocks(title="Study Buddy", theme=gr.themes.Soft()) as demo:
                 with gr.Column():
                     gr.Markdown("**VLE engagement**")
                     tot_clicks  = gr.Slider(0, 50000, value=3000, step=100, label="Total VLE clicks")
-                    active_days = gr.Slider(0, 300,   value=60,   step=1,   label="Active study days")
-                    gr.Markdown("**Clicks by activity type**")
-                    c_forumng   = gr.Slider(0, 10000, value=500,  step=50,  label="Forum clicks")
-                    c_oucontent = gr.Slider(0, 10000, value=800,  step=50,  label="OUContent clicks")
-                    c_subpage   = gr.Slider(0, 5000,  value=200,  step=50,  label="Subpage clicks")
-                    c_homepage  = gr.Slider(0, 5000,  value=300,  step=50,  label="Homepage clicks")
-                    c_quiz      = gr.Slider(0, 5000,  value=200,  step=50,  label="Quiz clicks")
-                    c_resource  = gr.Slider(0, 5000,  value=400,  step=50,  label="Resource clicks")
-                    c_url       = gr.Slider(0, 5000,  value=300,  step=50,  label="URL clicks")
-                    c_ouwiki    = gr.Slider(0, 5000,  value=100,  step=50,  label="OUWiki clicks")
-
-                    gr.Markdown("**Result**")
-                    risk_output = gr.Markdown()
+                    active_days = gr.Slider(0, 300, value=60, step=1, label="Active study days")
+                    gr.Markdown("---")
+                    risk_output = gr.Markdown(value="*Fill in the profile and click Predict.*")
                     risk_button = gr.Button("Predict Risk", variant="primary")
 
             risk_button.click(
@@ -302,8 +264,6 @@ with gr.Blocks(title="Study Buddy", theme=gr.themes.Soft()) as demo:
                     avg_score, max_score, std_score, n_subs,
                     avg_early, w_avg, tma_score, cma_score, exam_score,
                     tot_clicks, active_days,
-                    c_forumng, c_oucontent, c_subpage, c_homepage,
-                    c_quiz, c_resource, c_url, c_ouwiki,
                 ],
                 outputs=risk_output,
             )
