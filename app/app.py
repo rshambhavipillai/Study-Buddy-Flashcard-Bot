@@ -1,15 +1,19 @@
 """Study Buddy — Gradio app.
 
 Three tabs:
-  1. Ask a Question  — Gemma answers study questions
-  2. Flashcard Generator — Gemma builds Q/A flashcard sets
+  1. Ask a Question  — Gemma answers study questions (via Ollama)
+  2. Flashcard Generator — Gemma builds Q/A flashcard sets (via Ollama)
   3. Risk Dashboard  — OULAD-based dropout risk prediction (sklearn)
+
+Requirements:
+  brew install ollama
+  ollama pull gemma:2b
+  ollama serve          ← run in a separate terminal before starting the app
 
 Run from project root:
     python app/app.py
 """
 
-import os
 import warnings
 from pathlib import Path
 
@@ -17,96 +21,44 @@ warnings.filterwarnings("ignore")
 
 import gradio as gr
 import joblib
-import numpy as np
 import pandas as pd
-import torch
+import requests
 from sklearn.preprocessing import LabelEncoder
 
 # ── paths ──────────────────────────────────────────────────────────────────────
 ROOT        = Path(__file__).resolve().parent.parent
-ADAPTER_DIR = ROOT / "models" / "gemma-study-buddy"
 LR_MODEL    = ROOT / "models" / "logistic_regression.pkl"
 DT_MODEL    = ROOT / "models" / "decision_tree.pkl"
 SCALER_PATH = ROOT / "models" / "scaler.pkl"
 
-# ── device detection ───────────────────────────────────────────────────────────
-if torch.cuda.is_available():
-    DEVICE      = "cuda"
-    USE_4BIT    = True
-elif torch.backends.mps.is_available():
-    DEVICE      = "mps"
-    USE_4BIT    = False          # bitsandbytes requires CUDA
-else:
-    DEVICE      = "cpu"
-    USE_4BIT    = False
+OLLAMA_URL   = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "gemma:2b"
 
-print(f"Device: {DEVICE}  |  4-bit quantisation: {USE_4BIT}")
 
-# ── load Gemma + adapter ───────────────────────────────────────────────────────
-model      = None
-tokenizer  = None
-GEMMA_READY = False
-
-def load_gemma():
-    global model, tokenizer, GEMMA_READY
-    if not ADAPTER_DIR.exists():
-        print(f"[WARN] Adapter not found at {ADAPTER_DIR}. "
-              "Download it from Kaggle and place it in models/gemma-study-buddy/")
-        return
-
-    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-    from peft import PeftModel
-
-    BASE_ID = "google/gemma-2b-it"
-    print("Loading tokenizer …")
-    tokenizer = AutoTokenizer.from_pretrained(ADAPTER_DIR)
-    tokenizer.pad_token = tokenizer.eos_token
-
-    print("Loading base model …")
-    if USE_4BIT:
-        bnb = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-        )
-        base = AutoModelForCausalLM.from_pretrained(
-            BASE_ID, quantization_config=bnb,
-            device_map={"": 0}, torch_dtype=torch.bfloat16,
-        )
-    else:
-        # MPS has a 4 GB per-buffer limit that Gemma 2B exceeds in float16.
-        # Load on CPU in float32 — slower but works on any Mac.
-        base = AutoModelForCausalLM.from_pretrained(
-            BASE_ID, dtype=torch.float32, device_map="cpu",
-        )
-
-    print("Attaching LoRA adapter …")
-    model = PeftModel.from_pretrained(base, str(ADAPTER_DIR))
-    model.eval()
-    GEMMA_READY = True
-    print("Gemma ready.")
-
+# ── Ollama inference ───────────────────────────────────────────────────────────
 
 def generate(instruction: str, max_new_tokens: int = 400) -> str:
-    if not GEMMA_READY:
-        return "⚠️ Gemma model not loaded. Place the adapter in models/gemma-study-buddy/ and restart."
     prompt = (
         f"<start_of_turn>user\n{instruction}<end_of_turn>\n"
         "<start_of_turn>model\n"
     )
-    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-    with torch.no_grad():
-        out = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            temperature=0.7,
-            do_sample=True,
-            pad_token_id=tokenizer.eos_token_id,
-            repetition_penalty=1.1,
+    try:
+        resp = requests.post(OLLAMA_URL, json={
+            "model":  OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"num_predict": max_new_tokens, "temperature": 0.7},
+        }, timeout=120)
+        resp.raise_for_status()
+        return resp.json()["response"].strip()
+    except requests.exceptions.ConnectionError:
+        return (
+            "⚠️ Ollama is not running.\n\n"
+            "Start it with:\n```\nollama serve\n```\n"
+            "Then make sure `gemma:2b` is pulled:\n```\nollama pull gemma:2b\n```"
         )
-    new = out[0][inputs["input_ids"].shape[1]:]
-    return tokenizer.decode(new, skip_special_tokens=True).strip()
+    except Exception as e:
+        return f"⚠️ Error: {e}"
 
 
 # ── load sklearn risk models ───────────────────────────────────────────────────
@@ -358,5 +310,4 @@ with gr.Blocks(title="Study Buddy", theme=gr.themes.Soft()) as demo:
 
 
 if __name__ == "__main__":
-    load_gemma()
     demo.launch(share=False)
