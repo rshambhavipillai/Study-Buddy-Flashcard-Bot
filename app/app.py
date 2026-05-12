@@ -74,8 +74,10 @@ def load_gemma():
             device_map={"": 0}, torch_dtype=torch.bfloat16,
         )
     else:
+        # MPS has a 4 GB per-buffer limit that Gemma 2B exceeds in float16.
+        # Load on CPU in float32 — slower but works on any Mac.
         base = AutoModelForCausalLM.from_pretrained(
-            BASE_ID, torch_dtype=torch.float16, device_map=DEVICE,
+            BASE_ID, dtype=torch.float32, device_map="cpu",
         )
 
     print("Attaching LoRA adapter …")
